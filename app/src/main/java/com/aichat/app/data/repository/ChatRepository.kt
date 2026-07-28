@@ -22,13 +22,11 @@ class ChatRepository(
     private val searchClient: SearchClient = SearchClient()
 ) {
     private val searchMarkerRegex = Regex("""(?i)<search>\s*(.*?)\s*</search>""")
-    
-    // Thread-safe modern date formatter
     private val dateFormatter = DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy, hh:mm a", Locale.getDefault())
 
-    fun getAllConversations() = chatDao.getAllConversations()
-    
-    fun getMessages(conversationId: String) = chatDao.getMessagesForConversation(conversationId)
+    fun getAllConversations() = chatDao.getConversations()
+
+    fun getMessages(conversationId: String) = chatDao.getMessagesFlow(conversationId)
 
     suspend fun createConversation(title: String): String {
         return UUID.randomUUID().toString().also { newId ->
@@ -44,15 +42,14 @@ class ChatRepository(
 
     suspend fun deleteConversation(conversation: ConversationEntity) {
         chatDao.deleteMessagesByConversation(conversation.id)
-        chatDao.deleteConversation(conversation)
+        chatDao.deleteConversation(conversation.id)
     }
 
     suspend fun renameConversation(conversation: ConversationEntity, newTitle: String) {
-        chatDao.updateConversation(
-            conversation.copy(
-                title = newTitle,
-                updatedAt = System.currentTimeMillis()
-            )
+        chatDao.updateConversationTitle(
+            id = conversation.id,
+            title = newTitle,
+            updatedAt = System.currentTimeMillis()
         )
     }
 
@@ -69,8 +66,12 @@ class ChatRepository(
     }
 
     suspend fun updateConversationTime(conversationId: String) {
-        chatDao.getAllConversations().first().find { it.id == conversationId }?.let {
-            chatDao.updateConversation(it.copy(updatedAt = System.currentTimeMillis()))
+        chatDao.getConversations().first().find { it.id == conversationId }?.let {
+            chatDao.updateConversationTitle(
+                id = it.id,
+                title = it.title,
+                updatedAt = System.currentTimeMillis()
+            )
         }
     }
 
@@ -79,13 +80,13 @@ class ChatRepository(
         extraSystemMessage: String? = null,
         settingsSystemPrompt: String
     ): MutableList<ChatMessage> {
-        val history = chatDao.getMessagesSync(conversationId)
+        val history = chatDao.getMessages(conversationId)
             .map { ChatMessage(it.role, it.content) }
             .toMutableList()
 
         val currentTime = LocalDateTime.now().format(dateFormatter)
         val timeContext = "<metadata>\n[CRITICAL]: Current time is $currentTime.\n</metadata>"
-        
+
         val systemMessageContent = buildString {
             if (settingsSystemPrompt.isNotBlank()) {
                 append(settingsSystemPrompt.trim()).append("\n\n")
@@ -95,7 +96,7 @@ class ChatRepository(
                 append("\n\n").append(extraSystemMessage)
             }
         }
-        
+
         history.add(0, ChatMessage("system", systemMessageContent))
         return history
     }
@@ -103,7 +104,7 @@ class ChatRepository(
     fun sendMessageSmart(conversationId: String, newContent: String, useCloudAi: Boolean): Flow<ChatEvent> = flow {
         insertMessage(conversationId, "user", newContent)
         val settings = settingsRepository.settingsFlow.first()
-        
+
         val searchInstruction = settings.searchPrompt
         val targetApiKey: String
         val targetBaseUrl: String
@@ -117,6 +118,7 @@ class ChatRepository(
             modeName = "Cloud AI"
             if (targetApiKey.isBlank()) {
                 val errorMsg = "⚠️ Cloud API Key is missing. Please update in Settings."
+                insertMessage(conversationId, "assistant", errorMsg)
                 emit(ChatEvent.Chunk(errorMsg))
                 emit(ChatEvent.Done(errorMsg))
                 return@flow
@@ -128,6 +130,7 @@ class ChatRepository(
             modeName = "Local AI"
             if (targetBaseUrl.isBlank()) {
                 val errorMsg = "⚠️ Local Base URL is missing. Set your Colab link."
+                insertMessage(conversationId, "assistant", errorMsg)
                 emit(ChatEvent.Chunk(errorMsg))
                 emit(ChatEvent.Done(errorMsg))
                 return@flow
@@ -144,13 +147,13 @@ class ChatRepository(
         try {
             val initialHistory = buildHistory(conversationId, searchInstruction, settings.systemPrompt)
             val chatRequest = ChatRequest(targetModelName, initialHistory, true)
-            
+
             apiClient.streamChatRequest(targetBaseUrl, targetApiKey, chatRequest)
                 .takeWhile { !decidedSearch }
                 .collect { piece ->
                     buffer.append(piece)
                     val currentText = buffer.toString()
-                    
+
                     if (!decidedNormal && !decidedSearch) {
                         val match = searchMarkerRegex.find(currentText)
                         if (match != null) {
@@ -160,7 +163,7 @@ class ChatRepository(
                             decidedNormal = true
                         }
                     }
-                    
+
                     if (decidedNormal && settings.streamResponse) {
                         emit(ChatEvent.Chunk(currentText))
                     } else if (!decidedSearch) {
@@ -171,6 +174,7 @@ class ChatRepository(
             if (e is CancellationException) throw e
             if (!decidedSearch) {
                 val errorReply = "⚠️ $modeName Error: ${e.message}"
+                insertMessage(conversationId, "assistant", errorReply)
                 emit(ChatEvent.Chunk(errorReply))
                 emit(ChatEvent.Done(errorReply))
                 return@flow
@@ -188,9 +192,9 @@ class ChatRepository(
         }
 
         emit(ChatEvent.Status("🔍 Searching: ${searchQuery ?: ""}"))
-        
+
         var searchError = ""
-        val summary = try { 
+        val summary = try {
             val rawData = searchClient.search(searchQuery ?: "", settings.searchApiKey)
             val parsedData = searchClient.buildSummary(rawData)
             parsedData.ifBlank {
@@ -200,7 +204,7 @@ class ChatRepository(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             searchError = e.message ?: "Unknown Network Error"
-            "" 
+            ""
         }
 
         if (searchError.isNotEmpty()) {
@@ -210,31 +214,31 @@ class ChatRepository(
             emit(ChatEvent.Done(errorReply))
             return@flow
         }
-        
+
         emit(ChatEvent.Status("Generating response..."))
 
         val finalHistory = buildHistory(
-            conversationId, 
+            conversationId,
             """
             User question: $newContent
             Search Query: ${searchQuery ?: ""}
             Search Results: $summary
-            
+
             CRITICAL INSTRUCTION: Answer the user's question USING ONLY the facts provided in the 'Search Results'. Do NOT guess or make up facts.
-            """.trimIndent(), 
+            """.trimIndent(),
             settings.systemPrompt
         )
-        
+
         try {
             if (settings.streamResponse) {
                 val finalBuffer = java.lang.StringBuilder()
                 val finalRequest = ChatRequest(targetModelName, finalHistory, true)
-                
+
                 apiClient.streamChatRequest(targetBaseUrl, targetApiKey, finalRequest).collect { piece ->
                     finalBuffer.append(piece)
                     emit(ChatEvent.Chunk(finalBuffer.toString()))
                 }
-                
+
                 val finalFullResponse = finalBuffer.toString()
                 if (finalFullResponse.isNotBlank()) {
                     insertMessage(conversationId, "assistant", finalFullResponse)
@@ -244,7 +248,7 @@ class ChatRepository(
             } else {
                 val finalRequest = ChatRequest(targetModelName, finalHistory, false)
                 val finalResponse = apiClient.sendChatRequest(targetBaseUrl, targetApiKey, finalRequest)
-                
+
                 if (finalResponse.isNotBlank()) {
                     insertMessage(conversationId, "assistant", finalResponse)
                     updateConversationTime(conversationId)
@@ -255,6 +259,7 @@ class ChatRepository(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             val errorReply = "⚠️ $modeName Error: ${e.message}"
+            insertMessage(conversationId, "assistant", errorReply)
             emit(ChatEvent.Chunk(errorReply))
             emit(ChatEvent.Done(errorReply))
         }
