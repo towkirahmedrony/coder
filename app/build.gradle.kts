@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.aichat.app"
+    namespace = "com.coder.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.aichat.app"
+        applicationId = "com.coder.app"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

@@ -1,4 +1,4 @@
--keep class com.aichat.app.data.model.** { *; }
+-keep class com.coder.app.data.model.** { *; }
 -keepclassmembers class * {
     @androidx.room.Query <methods>;
     @androidx.room.Insert <methods>;
