@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "AIChat"
+rootProject.name = "Coder"
 include(":app")

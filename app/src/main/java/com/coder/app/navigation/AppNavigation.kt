@@ -6,10 +6,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.coder.app.AppContainer
-import com.coder.app.ui.screens.ChatScreen
-import com.coder.app.ui.screens.SettingsScreen
-import com.coder.app.viewmodel.ChatViewModel
-import com.coder.app.viewmodel.SettingsViewModel
+import com.coder.app.features.chat.ui.ChatScreen
+import com.coder.app.features.settings.ui.SettingsScreen
+import com.coder.app.features.chat.ui.viewmodel.ChatViewModel
+import com.coder.app.features.settings.ui.viewmodel.SettingsViewModel
 
 object Routes {
     const val CHAT = "chat"

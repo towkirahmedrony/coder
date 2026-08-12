@@ -6,10 +6,10 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
-import com.coder.app.data.local.ChatDatabase
-import com.coder.app.data.remote.ApiClient
-import com.coder.app.data.repository.ChatRepository
-import com.coder.app.data.repository.SettingsRepository
+import com.coder.app.core.database.ChatDatabase
+import com.coder.app.core.network.ApiClient
+import com.coder.app.features.chat.data.ChatRepository
+import com.coder.app.features.settings.data.SettingsRepository
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -22,7 +22,7 @@ class AppContainer(context: Context) {
             .fallbackToDestructiveMigration()
             .build()
     }
-    
+
     val settingsRepository: SettingsRepository by lazy {
         SettingsRepository(context.dataStore)
     }
@@ -30,7 +30,6 @@ class AppContainer(context: Context) {
     val apiClient: ApiClient by lazy {
         ApiClient()
     }
-
     val chatRepository: ChatRepository by lazy {
         ChatRepository(database.chatDao(), apiClient, settingsRepository)
     }
@@ -42,6 +41,9 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         
+        // 🚀 NEW: GitHub টোকেন ম্যানেজার চালু করা হলো
+        com.coder.app.core.network.TokenManager.init(this)
+
         // গ্লোবাল ক্র্যাশ হ্যান্ডলার: এটি ইন্টারনাল ফাইলে ক্র্যাশ লগ সেভ করে রাখবে
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, exception ->
@@ -55,7 +57,7 @@ class App : Application() {
             }
             defaultHandler?.uncaughtException(thread, exception)
         }
-        
+
         container = AppContainer(this)
     }
 }

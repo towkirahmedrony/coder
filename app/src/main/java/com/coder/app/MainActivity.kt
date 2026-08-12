@@ -12,8 +12,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.coder.app.navigation.AppNavigation
-import com.coder.app.ui.theme.AIChatTheme
-import com.coder.app.viewmodel.SettingsViewModel
+import com.coder.app.ui.theme.CoderTheme
+import com.coder.app.features.settings.ui.viewmodel.SettingsViewModel
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -58,7 +58,7 @@ class MainActivity : ComponentActivity() {
                     else -> isSystemInDarkTheme()
                 }
                 
-                AIChatTheme(darkTheme = useDarkTheme) {
+                CoderTheme(darkTheme = useDarkTheme) {
                     AppNavigation(appContainer)
                 }
             }

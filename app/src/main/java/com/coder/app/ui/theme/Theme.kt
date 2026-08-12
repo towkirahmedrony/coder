@@ -36,7 +36,7 @@ private val LightColorScheme = lightColorScheme(
 )
 
 @Composable
-fun AIChatTheme(
+fun CoderTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
