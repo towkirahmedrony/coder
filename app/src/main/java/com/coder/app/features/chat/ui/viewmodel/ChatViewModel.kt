@@ -8,6 +8,7 @@ import com.coder.app.core.model.MessageEntity
 import com.coder.app.features.chat.data.ChatEvent
 import com.coder.app.features.chat.data.ChatRepository
 import com.coder.app.features.settings.data.SettingsRepository
+import com.coder.app.features.workspace.data.WorkspaceManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -78,13 +79,14 @@ class ChatViewModel(
         if (match != null) {
             val owner = match.groupValues[1]
             val repo = match.groupValues[2].removeSuffix("/")
-            val query = content.replace(match.value, "").trim().let { if (it.isEmpty()) "Explain the architecture and main purpose of this repository." else it }
+            val query = content.replace(match.value, "").trim().let { if (it.isEmpty()) "Analyze this repository." else it }
+            val repoUrl = "https://github.com/$owner/$repo.git"
 
             currentChatJob = viewModelScope.launch {
                 _isLoading.value = true
                 _error.value = null
 
-                var accumulatedThoughts = "⚙️ Starting Agent..."
+                var accumulatedThoughts = "⚙️ Starting Workspace Agent..."
                 _streamingMessage.value = "<think>\n$accumulatedThoughts\n"
 
                 val conv = conversations.value.find { it.id == convId }
@@ -93,20 +95,29 @@ class ChatViewModel(
 
                 try {
                     val settings = settingsRepository.settingsFlow.first()
-                    val githubClient = com.coder.app.core.network.GithubClient(token = com.coder.app.core.network.TokenManager.githubToken)
-                    val agent = com.coder.app.features.agent.domain.AgenticGithubProcessor(githubClient)
+                    val token = com.coder.app.core.network.TokenManager.githubToken
                     val apiClient = com.coder.app.core.network.ApiClient()
 
+                    // 🚀 STEP 1: Clone or Sync the Repo Locally
+                    val cloneResult = WorkspaceManager.cloneRepository(repoUrl, repo, token) { progress ->
+                        accumulatedThoughts += "\n⚙️ $progress"
+                        _streamingMessage.value = "<think>\n$accumulatedThoughts\n"
+                    }
+
+                    if (cloneResult.isFailure) {
+                        throw Exception("Workspace Error: ${cloneResult.exceptionOrNull()?.message}")
+                    }
+
+                    // 🚀 STEP 2: Handover to Local Workspace Agent
+                    val agent = com.coder.app.features.agent.domain.AgenticGithubProcessor()
                     val finalResponse = agent.process(
-                        repoOwner = owner,
                         repoName = repo,
                         userQuery = query,
                         onUpdate = { status ->
                             accumulatedThoughts += "\n⚙️ $status"
                             _streamingMessage.value = "<think>\n$accumulatedThoughts\n"
                         },
-                        // 🚀 NEW: String এর বদলে List<ChatMessage> পাস করা হচ্ছে
-                        aiPromptRunner = { promptMessages -> 
+                        aiPromptRunner = { promptMessages ->
                             val baseUrl = if (_useCloudAi.value) settings.cloudBaseUrl else settings.localBaseUrl
                             val apiKey = if (_useCloudAi.value) settings.cloudApiKey else settings.localApiKey
                             val model = if (_useCloudAi.value) settings.cloudModelName else settings.localModelName

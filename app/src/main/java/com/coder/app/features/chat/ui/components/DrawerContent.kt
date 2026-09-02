@@ -1,12 +1,20 @@
 package com.coder.app.features.chat.ui.components
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.coder.app.core.model.ConversationEntity
 import com.coder.app.features.chat.ui.components.drawer.*
 import com.coder.app.core.common.TimeUtils
+import com.coder.app.navigation.Routes
+
+enum class DrawerMenuState { MAIN, HISTORY }
 
 @Composable
 fun DrawerContent(
@@ -16,14 +24,16 @@ fun DrawerContent(
     onNewChat: () -> Unit,
     onDelete: (ConversationEntity) -> Unit,
     onRename: (ConversationEntity, String) -> Unit,
-    onSettingsClick: () -> Unit
+    onNavigate: (String) -> Unit
 ) {
+    // 🚀 NEW: ড্রয়ারের বর্তমান স্টেটের জন্য ভেরিয়েবল
+    var currentMenu by remember { mutableStateOf(DrawerMenuState.MAIN) }
+
     var searchQuery by remember { mutableStateOf("") }
     var chatToRename by remember { mutableStateOf<ConversationEntity?>(null) }
     var renameText by remember { mutableStateOf("") }
     var chatToDelete by remember { mutableStateOf<ConversationEntity?>(null) }
 
-    // Performance Optimization: Memoize filtering and grouping calculations
     val filteredChats = remember(conversations, searchQuery) {
         if (searchQuery.isBlank()) conversations else {
             conversations.filter {
@@ -63,28 +73,87 @@ fun DrawerContent(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        DrawerHeader(onNewChat = onNewChat)
+        if (currentMenu == DrawerMenuState.MAIN) {
+            // ==========================================
+            // 🚀 VIEW 1: IDE MAIN MENU
+            // ==========================================
+            DrawerHeader(onNewChat = onNewChat)
+            
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            
+            NavigationDrawerItem(
+                label = { Text("Agent (Chat)") },
+                icon = { Icon(Icons.Default.SmartToy, contentDescription = null) },
+                selected = true, // Currently on Agent
+                onClick = { /* Already here, just close drawer ideally */ },
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+            
+            NavigationDrawerItem(
+                label = { Text("File Editor") },
+                icon = { Icon(Icons.Default.Code, contentDescription = null) },
+                selected = false,
+                onClick = { onNavigate(Routes.EDITOR) },
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+            
+            NavigationDrawerItem(
+                label = { Text("Terminal") },
+                icon = { Icon(Icons.Default.Terminal, contentDescription = null) },
+                selected = false,
+                onClick = { onNavigate(Routes.TERMINAL) },
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+            
+            NavigationDrawerItem(
+                label = { Text("Project History") },
+                icon = { Icon(Icons.Default.History, contentDescription = null) },
+                selected = false,
+                onClick = { currentMenu = DrawerMenuState.HISTORY },
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
 
-        DrawerSearchBar(
-            query = searchQuery,
-            onQueryChange = { searchQuery = it }
-        )
+            Spacer(modifier = Modifier.weight(1f))
+            
+            DrawerSettingsItem(onSettingsClick = { onNavigate(Routes.SETTINGS) })
+            
+        } else {
+            // ==========================================
+            // 🚀 VIEW 2: PROJECT HISTORY
+            // ==========================================
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp, start = 8.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { currentMenu = DrawerMenuState.MAIN }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                }
+                Text(
+                    text = "Project History", 
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
 
-        DrawerChatList(
-            groupedChats = groupedChats,
-            currentId = currentId,
-            searchQuery = searchQuery,
-            onSelect = onSelect,
-            onRenameRequest = { conv ->
-                chatToRename = conv
-                renameText = conv.title
-            },
-            onDeleteRequest = { conv ->
-                chatToDelete = conv
-            },
-            modifier = Modifier.weight(1f)
-        )
+            DrawerSearchBar(
+                query = searchQuery,
+                onQueryChange = { searchQuery = it }
+            )
 
-        DrawerSettingsItem(onSettingsClick = onSettingsClick)
+            DrawerChatList(
+                groupedChats = groupedChats,
+                currentId = currentId,
+                searchQuery = searchQuery,
+                onSelect = onSelect,
+                onRenameRequest = { conv ->
+                    chatToRename = conv
+                    renameText = conv.title
+                },
+                onDeleteRequest = { conv ->
+                    chatToDelete = conv
+                },
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }

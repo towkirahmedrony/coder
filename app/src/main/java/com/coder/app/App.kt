@@ -17,22 +17,10 @@ import java.io.StringWriter
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 class AppContainer(context: Context) {
-    val database: ChatDatabase by lazy {
-        Room.databaseBuilder(context, ChatDatabase::class.java, "chat_database")
-            .fallbackToDestructiveMigration()
-            .build()
-    }
-
-    val settingsRepository: SettingsRepository by lazy {
-        SettingsRepository(context.dataStore)
-    }
-
-    val apiClient: ApiClient by lazy {
-        ApiClient()
-    }
-    val chatRepository: ChatRepository by lazy {
-        ChatRepository(database.chatDao(), apiClient, settingsRepository)
-    }
+    val database: ChatDatabase by lazy { Room.databaseBuilder(context, ChatDatabase::class.java, "chat_database").fallbackToDestructiveMigration().build() }
+    val settingsRepository: SettingsRepository by lazy { SettingsRepository(context.dataStore) }
+    val apiClient: ApiClient by lazy { ApiClient() }
+    val chatRepository: ChatRepository by lazy { ChatRepository(database.chatDao(), apiClient, settingsRepository) }
 }
 
 class App : Application() {
@@ -41,10 +29,10 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         
-        // 🚀 NEW: GitHub টোকেন ম্যানেজার চালু করা হলো
+        // 🚀 NEW: Token এবং Workspace ম্যানেজার ইনিশিয়ালাইজ
         com.coder.app.core.network.TokenManager.init(this)
+        com.coder.app.features.workspace.data.WorkspaceManager.init(this)
 
-        // গ্লোবাল ক্র্যাশ হ্যান্ডলার: এটি ইন্টারনাল ফাইলে ক্র্যাশ লগ সেভ করে রাখবে
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, exception ->
             try {
@@ -52,9 +40,7 @@ class App : Application() {
                 val sw = StringWriter()
                 exception.printStackTrace(PrintWriter(sw))
                 crashFile.writeText(sw.toString())
-            } catch (e: Exception) {
-                // ইগনোর
-            }
+            } catch (e: Exception) { }
             defaultHandler?.uncaughtException(thread, exception)
         }
 

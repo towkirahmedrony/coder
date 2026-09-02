@@ -9,11 +9,12 @@ import com.coder.app.features.chat.ui.components.ChatTopBar
 import com.coder.app.features.chat.ui.components.DrawerContent
 import com.coder.app.features.chat.ui.state.rememberChatScreenState
 import com.coder.app.features.chat.ui.viewmodel.ChatViewModel
+import com.coder.app.navigation.Routes
 
 @Composable
 fun ChatScreen(
     viewModel: ChatViewModel,
-    onNavigateToSettings: () -> Unit
+    onNavigate: (String) -> Unit
 ) {
     val uiState = rememberChatScreenState()
 
@@ -25,7 +26,7 @@ fun ChatScreen(
     val error by viewModel.error.collectAsState()
     val useCloudAi by viewModel.useCloudAi.collectAsState()
 
-    val currentTitle = conversations.find { it.id == currentConvId }?.title ?: "Coder"
+    val currentTitle = conversations.find { it.id == currentConvId }?.title ?: "Coder Agent"
 
     LaunchedEffect(messages.size, streamingMsg) {
         if (messages.isNotEmpty() || streamingMsg != null) {
@@ -58,9 +59,9 @@ fun ChatScreen(
                     },
                     onDelete = viewModel::deleteConversation,
                     onRename = viewModel::renameConversation,
-                    onSettingsClick = {
+                    onNavigate = { route -> 
                         uiState.closeDrawer()
-                        onNavigateToSettings()
+                        onNavigate(route)
                     }
                 )
             }
